@@ -18,6 +18,7 @@
 #[derive(Debug, Clone)]
 pub enum ClipboardItem {
     Text(String),
+    GlyphsMagicPlist(Vec<u8>),
     #[doc(hidden)]
     __NotExhaustive,
     // other things

@@ -14,13 +14,17 @@
 
 //! macOS implementation of features at the application scope.
 
+#![allow(non_upper_case_globals)]
+
 use super::util;
 use crate::clipboard::ClipboardItem;
 use cocoa::appkit::{NSApp, NSPasteboardTypeString};
 use cocoa::base::{id, nil, BOOL, YES};
-use cocoa::foundation::NSInteger;
+use cocoa::foundation::{NSInteger, NSUInteger};
 
 pub struct Application;
+
+const kCFPropertyListBinaryFormat_v1_0: NSUInteger = 200;
 
 impl Application {
     pub fn quit() {
@@ -80,6 +84,24 @@ impl Application {
                     let _: NSInteger = msg_send![pasteboard, clearContents];
                     let _: BOOL =
                         msg_send![pasteboard, setString: nsstring forType: NSPasteboardTypeString];
+                }
+                ClipboardItem::GlyphsMagicPlist(data) => {
+                    let _: NSInteger = msg_send![pasteboard, clearContents];
+                    let pboard_type = util::make_nsstring("Glyphs elements pasteboard type");
+                    let format = kCFPropertyListBinaryFormat_v1_0;
+
+                    let dlen = data.len();
+                    let data: id = msg_send![class!(NSData), dataWithBytes: data.as_ptr() as *const std::ffi::c_void length: dlen as u64];
+
+                    let plist_ser = class!(NSPropertyListSerialization);
+                    let err: *mut id = std::ptr::null_mut();
+                    let plist: id = msg_send![plist_ser, propertyListWithData: data options: 0 format: &format as *const NSUInteger error: err];
+                    if !err.is_null() {
+                        let err_str: id = msg_send![*err, localizedDescription];
+                        let err_str = util::from_nsstring(err_str);
+                        log::warn!("Error setting clipboard '{}'", err_str);
+                    }
+                    let _: BOOL = msg_send![pasteboard, setPropertyList: plist forType: pboard_type];
                 }
                 other => log::warn!("unhandled clipboard data {:?}", other),
             }
