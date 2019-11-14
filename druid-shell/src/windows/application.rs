@@ -24,7 +24,7 @@ use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::winbase::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use winapi::um::winuser::*;
 
-use crate::clipboard::ClipboardItem;
+use crate::clipboard::{ClipboardFormat, ClipboardItem};
 use crate::util::{FromWide, ToWide};
 
 pub struct Application;
@@ -35,6 +35,7 @@ impl Application {
     }
 
     /// Returns the contents of the clipboard, if any.
+    #[deprecated(since = "0.4.0", note = "use methods on ClipboardContents instead")]
     pub fn get_clipboard_contents() -> Option<ClipboardItem> {
         unsafe {
             if OpenClipboard(ptr::null_mut()) == FALSE {
@@ -53,19 +54,22 @@ impl Application {
                 return;
             }
             EmptyClipboard();
-            match item {
-                ClipboardItem::Text(string) => {
-                    let wstr = string.to_wide();
-                    let wstr_copy =
-                        GlobalAlloc(GMEM_MOVEABLE, wstr.len() * std::mem::size_of::<WCHAR>());
-                    let locked = GlobalLock(wstr_copy) as LPWSTR;
-                    ptr::copy_nonoverlapping(wstr.as_ptr(), locked, wstr.len());
-                    GlobalUnlock(wstr_copy);
-                    SetClipboardData(CF_UNICODETEXT, wstr_copy);
+
+            for fmt in item.iter_supported() {
+                match fmt {
+                    ClipboardFormat::Text(string) => {
+                        let wstr = string.to_wide();
+                        let wstr_copy =
+                            GlobalAlloc(GMEM_MOVEABLE, wstr.len() * std::mem::size_of::<WCHAR>());
+                        let locked = GlobalLock(wstr_copy) as LPWSTR;
+                        ptr::copy_nonoverlapping(wstr.as_ptr(), locked, wstr.len());
+                        GlobalUnlock(wstr_copy);
+                        SetClipboardData(CF_UNICODETEXT, wstr_copy);
+                    }
+                    other => log::warn!("unhandled clipboard data {:?}", other),
                 }
-                other => log::warn!("unhandled clipboard data {:?}", other),
+                CloseClipboard();
             }
-            CloseClipboard();
         }
     }
 }
