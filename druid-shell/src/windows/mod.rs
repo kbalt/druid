@@ -20,6 +20,7 @@
     )]
 
 pub mod application;
+pub mod clipboard;
 pub mod dcomp;
 pub mod dialog;
 pub mod menu;

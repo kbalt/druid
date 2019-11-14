@@ -25,6 +25,7 @@ use log::{error, info, warn};
 use crate::kurbo::{Rect, Size, Vec2};
 use crate::piet::{Piet, RenderContext};
 use crate::shell::application::Application;
+use crate::shell::clipboard::ClipboardContents;
 use crate::shell::dialog::FileDialogOptions;
 use crate::shell::window::{Cursor, MouseEvent, WinCtx, WinHandler, WindowHandle};
 
@@ -571,10 +572,8 @@ impl<T: Data + 'static> DruidHandler<T> {
     }
 
     fn do_paste(&mut self, window_id: WindowId, ctx: &mut dyn WinCtx) {
-        if let Some(clip_item) = Application::get_clipboard_contents() {
-            let event = Event::Paste(clip_item);
-            self.app_state.borrow_mut().do_event(window_id, event, ctx);
-        }
+        let event = Event::Paste(ClipboardContents::default());
+        self.app_state.borrow_mut().do_event(window_id, event, ctx);
     }
 
     fn quit(&self) {

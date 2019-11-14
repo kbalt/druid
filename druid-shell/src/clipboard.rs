@@ -17,11 +17,13 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
+pub use crate::platform::clipboard::{self as platform, ClipboardContents};
+
 /// An item on the system clipboard.
 #[derive(Debug, Clone)]
 pub enum ClipboardItem {
     Text(String),
-    Custom(Arc<dyn ClipboardWrite>),
+    Custom(CustomData),
 
     #[doc(hidden)]
     __NotExhaustive,
@@ -35,9 +37,9 @@ impl ClipboardItem {
     }
 }
 
-impl<T: ClipboardWrite + 'static> From<T> for ClipboardItem {
-    fn from(src: T) -> ClipboardItem {
-        ClipboardItem::Custom(Arc::new(src))
+impl From<CustomData> for ClipboardItem {
+    fn from(src: CustomData) -> ClipboardItem {
+        ClipboardItem::Custom(src)
     }
 }
 
@@ -53,14 +55,27 @@ impl From<&str> for ClipboardItem {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CustomData {
+    // these are arc's so we can clone without thinking about it much
+    pub(crate) data: Arc<[u8]>,
+    pub(crate) info: Arc<dyn ClipboardWrite>,
+}
+
+impl CustomData {
+    pub fn new(data: impl Into<Arc<[u8]>>, typ: impl ClipboardWrite + 'static) -> Self {
+        CustomData {
+            data: data.into(),
+            info: Arc::new(typ),
+        }
+    }
+}
+
 //TODO: make custom formats work on windows, gtk.
 // https://docs.microsoft.com/en-us/windows/win32/dataxchg/clipboard-formats#registered-clipboard-formats
 
 /// A trait for types that can be written to the clipboard.
-pub trait ClipboardWrite: Debug {
-    /// The data to be written. How this data is interpreted will depend
-    /// on the `WriteOpts` provided for a given platform.
-    fn data(&self) -> &[u8];
+pub trait ClipboardWrite {
     /// Returns, for a given platform, additional information for writing
     /// this data type on that platform. If `None`, this data will not
     /// be written on this platform.
@@ -73,55 +88,65 @@ pub trait ClipboardWrite: Debug {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct GlyphsBinaryPlist(pub Vec<u8>);
+impl std::fmt::Debug for dyn ClipboardWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "ClipboardWrite(\"{:?}\")", self.write_options())
+    }
+}
 
-impl ClipboardWrite for GlyphsBinaryPlist {
-    fn data(&self) -> &[u8] {
-        self.0.as_slice()
+/// A trait for types that can be read from the clipboard.
+pub trait ClipboardRead {
+    /// The final (parsed) type of the data we will read.
+    type Data;
+
+    /// On each platform where this type can be read, returns platform-specific
+    /// arguments for retrieving the raw data from the clipboard on that platform.
+    fn read_options(&self) -> Option<platform::ReadOpts> {
+        None
     }
 
+    /// Attempts to parse raw data from the clipboard into `Self::Type`.
+    //NOTE: this should probably be returning a Result<T>?
+    fn parse(&self, data: Vec<u8>) -> Option<Self::Data>;
+}
+
+// an example:
+#[derive(Debug, Clone)]
+pub struct GlyphsBinaryPlist;
+
+impl ClipboardWrite for GlyphsBinaryPlist {
     #[cfg(target_os = "macos")]
     fn write_options(&self) -> Option<platform::WriteOpts> {
         Some(platform::WriteOpts {
-            identifier: "Glyphs elements pasteboard type",
+            identifier: platform::Identifier::uti("Glyphs elements pasteboard type"),
             data_type: platform::DataType::BinaryPlist,
         })
     }
 }
 
-/// Platform-specific clipboard types.
-pub mod platform {
-    #[cfg(all(target_os = "macos", not(feature = "use_gtk")))]
-    pub use mac::*;
+pub struct Pdf;
 
-    /// Placeholder; platforms with special behaviour should have their
-    /// own version.
-    #[cfg(any(feature = "use_gtk", not(target_os = "macos")))]
-    struct WriteOpts;
+impl ClipboardWrite for Pdf {
+    #[cfg(target_os = "macos")]
+    fn write_options(&self) -> Option<platform::WriteOpts> {
+        Some(platform::WriteOpts {
+            identifier: platform::Identifier::uti("com.adobe.pdf"),
+            data_type: platform::DataType::Data,
+        })
+    }
+}
 
-    pub mod mac {
-        pub struct WriteOpts {
-            /// Corresponds to [`NSPasteboardType`][].
-            ///
-            /// In general, you should use a [Universal Type Identifier][] as your
-            /// pasteboard type; if you do not, a dynamic UTI will be generated for you
-            /// by Cocoa.
-            ///
-            /// [`NSPasteboardType`]: https://developer.apple.com/documentation/appkit/nspasteboardtype
-            /// [Universal Type Identifier]: https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/understanding_utis/understand_utis_intro/understand_utis_intro.html
-            pub identifier: &'static str,
-            pub data_type: DataType,
-        }
+impl ClipboardRead for Pdf {
+    type Data = Vec<u8>;
 
-        /// The different raw types we can write to the clipboard on macOS.
-        ///
-        /// If you wish to write a plist, you must encode it as a binary plist.
-        /// This limitation is imposed by druid for the sake of simplicity.
-        pub enum DataType {
-            String,
-            Data,
-            BinaryPlist,
-        }
+    #[cfg(target_os = "macos")]
+    fn read_options(&self) -> Option<platform::ReadOpts> {
+        Some(platform::ReadOpts {
+            identifier: platform::Identifier::uti("com.adobe.pdf"),
+        })
+    }
+
+    fn parse(&self, data: Vec<u8>) -> Option<Self::Data> {
+        Some(data)
     }
 }

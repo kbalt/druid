@@ -53,6 +53,17 @@ pub(crate) fn make_nsdata(bytes: &[u8]) -> id {
     }
 }
 
+pub(crate) fn from_nsdata(data: id) -> Vec<u8> {
+    unsafe {
+        let len: NSUInteger = msg_send![data, length];
+        let bytes: *const c_void = msg_send![data, bytes];
+        let mut out: Vec<u8> = Vec::with_capacity(len as usize);
+        std::ptr::copy_nonoverlapping(bytes as *const u8, out.as_mut_ptr(), len as usize);
+        out.set_len(len as usize);
+        out
+    }
+}
+
 /// Returns the current locale string.
 ///
 /// This should a [Unicode language identifier].

@@ -42,6 +42,7 @@ use crate::window::{self, Cursor, FileInfo, MouseButton, Text, TimerToken, WinCt
 use crate::Error;
 
 pub mod application;
+pub mod clipboard;
 pub mod dialog;
 pub mod menu;
 pub mod util;

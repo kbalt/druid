@@ -17,7 +17,7 @@
 #![allow(non_upper_case_globals)]
 
 use super::util;
-use crate::clipboard::ClipboardItem;
+use crate::clipboard::{ClipboardItem, CustomData};
 use cocoa::appkit::{NSApp, NSPasteboardTypeString};
 use cocoa::base::{id, nil, BOOL, YES};
 use cocoa::foundation::{NSInteger, NSUInteger};
@@ -86,18 +86,20 @@ impl Application {
                     let _: BOOL =
                         msg_send![pasteboard, setString: nsstring forType: NSPasteboardTypeString];
                 }
-                ClipboardItem::Custom(item) if item.write_options().is_some() => {
+                ClipboardItem::Custom(CustomData { ref data, ref info })
+                    if info.write_options().is_some() =>
+                {
                     let _: NSInteger = msg_send![pasteboard, clearContents];
-                    let write_options = item.write_options().unwrap();
-                    let pb_type = util::make_nsstring(write_options.identifier);
+                    let write_options = info.write_options().unwrap();
+                    let pb_type = write_options.identifier.to_nsstring();
                     let pb_data: id = match write_options.data_type {
                         crate::clipboard::platform::DataType::String => {
-                            let string = String::from_utf8_lossy(item.data());
+                            let string = String::from_utf8_lossy(&data);
                             util::make_nsstring(string.as_ref())
                         }
-                        DataType::Data => util::make_nsdata(item.data()),
+                        DataType::Data => util::make_nsdata(&data),
                         DataType::BinaryPlist => {
-                            let data = util::make_nsdata(item.data());
+                            let data = util::make_nsdata(&data);
                             let format = kCFPropertyListBinaryFormat_v1_0;
                             let formatp = &format as *const NSUInteger;
                             //TODO: proper error handling. This means an error module for each

@@ -17,6 +17,7 @@
 #![allow(non_snake_case, clippy::let_unit_value)]
 
 pub mod application;
+pub mod clipboard;
 pub mod dialog;
 pub mod menu;
 pub mod util;
