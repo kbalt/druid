@@ -17,7 +17,8 @@
 #![allow(non_upper_case_globals)]
 
 use super::util;
-use crate::clipboard::{ClipboardItem, CustomData};
+use crate::clipboard::platform::{DataType, WriteOpts};
+use crate::clipboard::{ClipboardFormat, ClipboardItem};
 use cocoa::appkit::{NSApp, NSPasteboardTypeString};
 use cocoa::base::{id, nil, BOOL, YES};
 use cocoa::foundation::{NSInteger, NSUInteger};
@@ -50,6 +51,7 @@ impl Application {
     }
 
     /// Returns the contents of the clipboard, if any.
+    #[deprecated(since = "0.4.0", note = "use methods on ClipboardContents instead")]
     pub fn get_clipboard_contents() -> Option<ClipboardItem> {
         unsafe {
             let nspasteboard = class!(NSPasteboard);
@@ -75,59 +77,68 @@ impl Application {
 
     /// Sets the contents of the system clipboard.
     pub fn set_clipboard_contents(item: ClipboardItem) {
-        use crate::clipboard::platform::DataType;
         unsafe {
-            let nspasteboard = class!(NSPasteboard);
-            let pasteboard: id = msg_send![nspasteboard, generalPasteboard];
-            match item {
-                ClipboardItem::Text(string) => {
-                    let nsstring = util::make_nsstring(&string);
-                    let _: NSInteger = msg_send![pasteboard, clearContents];
-                    let _: BOOL =
-                        msg_send![pasteboard, setString: nsstring forType: NSPasteboardTypeString];
-                }
-                ClipboardItem::Custom(CustomData { ref data, ref info })
-                    if info.write_options().is_some() =>
-                {
-                    let _: NSInteger = msg_send![pasteboard, clearContents];
-                    let write_options = info.write_options().unwrap();
-                    let pb_type = write_options.identifier.to_nsstring();
-                    let pb_data: id = match write_options.data_type {
-                        crate::clipboard::platform::DataType::String => {
-                            let string = String::from_utf8_lossy(&data);
-                            util::make_nsstring(string.as_ref())
-                        }
-                        DataType::Data => util::make_nsdata(&data),
-                        DataType::BinaryPlist => {
-                            let data = util::make_nsdata(&data);
-                            let format = kCFPropertyListBinaryFormat_v1_0;
-                            let formatp = &format as *const NSUInteger;
-                            //TODO: proper error handling. This means an error module for each
-                            //platform, that represents the native platform error, and is converted
-                            //to a top-level Error::Platform variant in druid-shell?
-                            let plist_ser = class!(NSPropertyListSerialization);
-                            msg_send![plist_ser, propertyListWithData: data options: 0 format: formatp error: nil]
-                        }
-                    };
-                    if pb_data.is_null() {
-                        log::warn!(
-                            "failed to create pasteboard data of type '{}'",
-                            write_options.identifier
-                        );
-                        return;
-                    }
+            let pasteboard: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            let _: NSInteger = msg_send![pasteboard, clearContents];
 
-                    let _success: BOOL = match write_options.data_type {
-                        DataType::String => {
-                            msg_send![pasteboard, setString: pb_data forType: pb_type]
+            let pb_types = item.make_types_array();
+            let _: NSInteger = msg_send![pasteboard, declareTypes: pb_types owner: nil];
+
+            for fmt in item.iter_supported() {
+                match fmt {
+                    ClipboardFormat::Text(string) => {
+                        let nsstring = util::make_nsstring(&string);
+                        let _: BOOL = msg_send![pasteboard, setString: nsstring forType: NSPasteboardTypeString];
+                    }
+                    ClipboardFormat::Custom { data, info } => {
+                        let opts = info.write_options().unwrap();
+                        let pb_type = opts.identifier.to_nsstring();
+                        let pb_data = make_nsobj_for_format(data, &opts);
+                        if pb_data.is_null() {
+                            log::warn!(
+                                "failed to create pasteboard data of type '{}'",
+                                opts.identifier
+                            );
+                            return;
                         }
-                        DataType::Data => msg_send![pasteboard, setData: pb_data forType: pb_type],
-                        DataType::BinaryPlist => {
-                            msg_send![pasteboard, setPropertyList: pb_data forType: pb_type]
-                        }
-                    };
+
+                        let _: BOOL = match opts.data_type {
+                            DataType::String => {
+                                msg_send![pasteboard, setString: pb_data forType: pb_type]
+                            }
+                            DataType::Data => {
+                                msg_send![pasteboard, setData: pb_data forType: pb_type]
+                            }
+                            DataType::BinaryPlist => {
+                                msg_send![pasteboard, setPropertyList: pb_data forType: pb_type]
+                            }
+                        };
+                    }
+                    other => log::warn!("unhandled clipboard data {:?}", other),
                 }
-                other => log::warn!("unhandled clipboard data {:?}", other),
+            }
+        }
+    }
+}
+
+/// Creates the appropriate NSObject from the provided data, given these `WriteOpts`.
+fn make_nsobj_for_format(data: &[u8], opts: &WriteOpts) -> id {
+    match opts.data_type {
+        DataType::String => {
+            let string = String::from_utf8_lossy(&data);
+            util::make_nsstring(string.as_ref())
+        }
+        DataType::Data => util::make_nsdata(&data),
+        DataType::BinaryPlist => {
+            let data = util::make_nsdata(&data);
+            let format = kCFPropertyListBinaryFormat_v1_0;
+            let formatp = &format as *const NSUInteger;
+            //TODO: proper error handling. This means an error module for each
+            //platform, that represents the native platform error, and is converted
+            //to a top-level Error::Platform variant in druid-shell?
+            unsafe {
+                let plist_ser = class!(NSPropertyListSerialization);
+                msg_send![plist_ser, propertyListWithData: data options: 0 format: formatp error: nil]
             }
         }
     }

@@ -15,58 +15,59 @@
 //! Interacting with the system pasteboard/clipboard.
 
 use std::fmt::Debug;
-use std::sync::Arc;
 
 pub use crate::platform::clipboard::{self as platform, ClipboardContents};
 
-/// An item on the system clipboard.
-#[derive(Debug, Clone)]
-pub enum ClipboardItem {
-    Text(String),
-    Custom(CustomData),
+/// An item to be put on the clipboard.
+///
+/// An item may have multiple representations; each representation
+/// can be provided as a separate `ClipboardFormat`.
+#[derive(Debug)]
+pub struct ClipboardItem(Vec<ClipboardFormat>);
 
+/// A representation of some data that can be put on the system clipboard.
+#[derive(Debug)]
+pub enum ClipboardFormat {
+    Text(String),
+    Custom {
+        data: Vec<u8>,
+        info: Box<dyn ClipboardWrite>,
+    },
     #[doc(hidden)]
+    /// Adding future items will not be a breaking change.
     __NotExhaustive,
-    // other things
+    // other things?
 }
 
 impl ClipboardItem {
-    /// Create a new `ClipboardItem`.
-    pub fn new(item: impl Into<ClipboardItem>) -> Self {
+    /// Create a new `ClipboardFormat`.
+    pub fn new(item: impl Into<ClipboardFormat>) -> Self {
+        ClipboardItem(vec![item.into()])
+    }
+
+    /// A builder method to add a representation to this clipboard.
+    pub fn add_format(mut self, item: impl Into<ClipboardFormat>) -> Self {
+        self.0.push(item.into());
+        self
+    }
+
+    /// An iterator over formats supported on the current platform.
+    pub fn iter_supported(&self) -> impl Iterator<Item = &ClipboardFormat> {
+        self.0.iter().filter(|fmt| fmt.supports_current_platform())
+    }
+}
+
+impl ClipboardFormat {
+    /// Create a new `ClipboardFormat`.
+    pub fn new(item: impl Into<ClipboardFormat>) -> Self {
         item.into()
     }
-}
 
-impl From<CustomData> for ClipboardItem {
-    fn from(src: CustomData) -> ClipboardItem {
-        ClipboardItem::Custom(src)
-    }
-}
-
-impl From<String> for ClipboardItem {
-    fn from(src: String) -> ClipboardItem {
-        ClipboardItem::Text(src)
-    }
-}
-
-impl From<&str> for ClipboardItem {
-    fn from(src: &str) -> ClipboardItem {
-        ClipboardItem::Text(src.to_string())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CustomData {
-    // these are arc's so we can clone without thinking about it much
-    pub(crate) data: Arc<[u8]>,
-    pub(crate) info: Arc<dyn ClipboardWrite>,
-}
-
-impl CustomData {
-    pub fn new(data: impl Into<Arc<[u8]>>, typ: impl ClipboardWrite + 'static) -> Self {
-        CustomData {
-            data: data.into(),
-            info: Arc::new(typ),
+    pub fn supports_current_platform(&self) -> bool {
+        match self {
+            ClipboardFormat::Text(_) => true,
+            ClipboardFormat::Custom { info, .. } => info.write_options().is_some(),
+            ClipboardFormat::__NotExhaustive => false,
         }
     }
 }
@@ -148,5 +149,44 @@ impl ClipboardRead for Pdf {
 
     fn parse(&self, data: Vec<u8>) -> Option<Self::Data> {
         Some(data)
+    }
+}
+
+impl From<String> for ClipboardFormat {
+    fn from(src: String) -> ClipboardFormat {
+        ClipboardFormat::Text(src)
+    }
+}
+
+impl From<String> for ClipboardItem {
+    fn from(src: String) -> ClipboardItem {
+        ClipboardItem(vec![ClipboardFormat::Text(src)])
+    }
+}
+
+impl From<&str> for ClipboardFormat {
+    fn from(src: &str) -> ClipboardFormat {
+        ClipboardFormat::Text(src.to_string())
+    }
+}
+
+impl From<&str> for ClipboardItem {
+    fn from(src: &str) -> ClipboardItem {
+        ClipboardItem(vec![ClipboardFormat::Text(src.to_string())])
+    }
+}
+
+impl<T: ClipboardWrite + 'static> From<(Vec<u8>, T)> for ClipboardFormat {
+    fn from(src: (Vec<u8>, T)) -> ClipboardFormat {
+        ClipboardFormat::Custom {
+            data: src.0,
+            info: Box::new(src.1),
+        }
+    }
+}
+
+impl From<Vec<ClipboardFormat>> for ClipboardItem {
+    fn from(src: Vec<ClipboardFormat>) -> ClipboardItem {
+        ClipboardItem(src)
     }
 }

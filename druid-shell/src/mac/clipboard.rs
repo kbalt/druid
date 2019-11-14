@@ -15,10 +15,11 @@
 //! Interactions with the system pasteboard on macOS.
 
 use cocoa::appkit::NSPasteboardTypeString;
-use cocoa::base::{id, BOOL, YES};
+use cocoa::base::{id, nil, BOOL, YES};
+use cocoa::foundation::NSArray;
 
 use super::util;
-use crate::clipboard::ClipboardRead;
+use crate::clipboard::{ClipboardFormat, ClipboardItem, ClipboardRead};
 
 #[derive(Debug, Clone, Default)]
 pub struct ClipboardContents;
@@ -130,6 +131,30 @@ impl std::fmt::Display for Identifier {
         match self {
             Identifier::Uti(s) => write!(f, "{}", s),
             __NonExhaustive => write!(f, "wat"), // very rare identifier
+        }
+    }
+}
+
+// platform-specific impls
+impl ClipboardItem {
+    pub(crate) fn make_types_array(&self) -> Option<id> {
+        unsafe {
+            let formats: Vec<_> = self
+                .iter_supported()
+                .map(|fmt| match fmt {
+                    ClipboardFormat::Text(_) => NSPasteboardTypeString,
+                    ClipboardFormat::Custom { info, .. } => {
+                        info.write_options().unwrap().identifier.to_nsstring()
+                    }
+                    _ => unreachable!(),
+                })
+                .collect();
+
+            if formats.is_empty() {
+                None
+            } else {
+                Some(NSArray::arrayWithObjects(nil, &formats))
+            }
         }
     }
 }
