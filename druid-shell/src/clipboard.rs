@@ -14,8 +14,6 @@
 
 //! Interacting with the system pasteboard/clipboard.
 
-use std::fmt::Debug;
-
 pub use crate::platform::clipboard::{self as platform, ClipboardContents};
 
 /// An item to be put on the clipboard.
@@ -133,6 +131,13 @@ impl ClipboardWrite for Pdf {
         Some(platform::WriteOpts {
             identifier: platform::Identifier::uti("com.adobe.pdf"),
             data_type: platform::DataType::Data,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    fn write_options(&self) -> Option<platform::WriteOpts> {
+        Some(platform::WriteOpts {
+            identifier: "application/pdf",
         })
     }
 }
