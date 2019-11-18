@@ -45,8 +45,7 @@ use direct2d::enums::DrawTextOptions;
 
 use log::error;
 
-use crate::Error;
-
+use super::error::Error;
 use super::window::win_proc_dispatch;
 
 pub fn as_result(hr: HRESULT) -> Result<(), Error> {

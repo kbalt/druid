@@ -18,6 +18,7 @@
 
 pub mod application;
 pub mod dialog;
+pub mod error;
 pub mod menu;
 pub mod runloop;
 pub mod util;

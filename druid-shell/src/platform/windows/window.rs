@@ -50,6 +50,7 @@ use crate::piet::{Piet, RenderContext};
 
 use super::dcomp::{D3D11Device, DCompositionDevice, DCompositionTarget, DCompositionVisual};
 use super::dialog::get_file_dialog_path;
+use super::error::Error;
 use super::menu::Menu;
 use super::paint;
 use super::timers::TimerSlots;
@@ -62,7 +63,6 @@ use crate::keyboard::{KeyCode, KeyEvent, KeyModifiers};
 use crate::mouse::{Cursor, MouseButton, MouseEvent};
 use crate::util::{as_result, FromWide, ToWide, OPTIONAL_FUNCTIONS};
 use crate::window::{FileInfo, Text, TimerToken, WinCtx, WinHandler};
-use crate::Error;
 
 extern "system" {
     pub fn DwmFlush();
@@ -845,7 +845,7 @@ impl WindowBuilder {
                 win.clone(),
             );
             if hwnd.is_null() {
-                return Err(Error::Other("hwnd.is_null() == true"));
+                return Err(Error::NullHwnd);
             }
 
             let dcomp_state = create_dcomp_state(self.present_strategy, hwnd).unwrap_or_else(|e| {
@@ -1157,7 +1157,7 @@ impl WindowHandle {
         ty: FileDialogType,
         options: FileDialogOptions,
     ) -> Result<OsString, Error> {
-        let hwnd = self.get_hwnd().ok_or(Error::Other("get_hwnd() is None"))?;
+        let hwnd = self.get_hwnd().ok_or(Error::NullHwnd)?;
         unsafe { get_file_dialog_path(hwnd, ty, options) }
     }
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The xi-editor Authors.
+// Copyright 2019 The xi-editor Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Windows implementation of druid-shell.
+//! macOS platform errors.
 
-pub mod application;
-pub mod dcomp;
-pub mod dialog;
-pub mod error;
-pub mod menu;
-pub mod paint;
-pub mod runloop;
-mod timers;
-pub mod util;
-pub mod window;
+//TODO: add a platform error for macOS, based on NSError
+
+#[derive(Debug, Clone)]
+pub struct Error;
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "NSError")
+    }
+}
+
+impl std::error::Error for Error {}
